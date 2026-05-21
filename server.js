@@ -26,29 +26,29 @@ app.get("/api/protected", authenticateToken, (req, res) => {
 });
 
 // Route för att lägga till spel i samlingen (kräver JWT)
-app.post("/api/games", authenticateToken, (req, res) => {
-  const { title, system } = req.body;
-  if (!title || !system) {
+app.post("/api/addmenu", authenticateToken, (req, res) => {
+  const { year, week_number } = req.body;
+  if (!year || !week_number) {
     return res
       .status(400)
-      .json({ message: "Alla fält (title, system) måste fyllas i!" });
+      .json({ message: "Alla fält (year, week_number) måste fyllas i!" });
   }
 
-  const sql = `INSERT INTO game_collection (title, system) VALUES (?, ?)`;
-  db.run(sql, [title, system], function (err) {
+  const sql = `INSERT INTO menus (year, week_number) VALUES (?, ?)`;
+  db.run(sql, [year, week_number], function (err) {
     if (err) {
       res.status(400).json({ message: "Något gick fel!" });
     } else {
       res
         .status(201)
-        .json({ message: "Spel tillagt i samlingen!", gameId: this.lastID });
+        .json({ message: "Meny tillagd!", menuId: this.lastID });
     }
   });
 });
 
-// Route för att hämta alla spel i samlingen (kräver ej JWT)
-app.get("/api/games", (req, res) => {
-  const sql = `SELECT * FROM game_collection`;
+// Route för att hämta alla menyer (kräver ej JWT)
+app.get("/api/menus", (req, res) => {
+  const sql = `SELECT * FROM menus`;
 
   db.all(sql, [], (err, rows) => {
     if (err) {
