@@ -61,7 +61,7 @@ app.get("/api/menus", (req, res) => {
 // Registrera användare
 app.post("/api/register", async (req, res) => {
   try {
-    const { name, email, username, password } = req.body;
+    const { email, password } = req.body;
 
     // Validera input
     if (!email || !password) {
