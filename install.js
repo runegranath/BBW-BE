@@ -23,7 +23,6 @@ db.serialize(() => {
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     year INTEGER NOT NULL,
     week_number INTEGER NOT NULL,
-    is_published INTEGER DEFAULT 0,
     UNIQUE(year, week_number)
 )`);
   console.log("Tabellen menus skapad");

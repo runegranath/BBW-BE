@@ -25,7 +25,7 @@ app.get("/api/protected", authenticateToken, (req, res) => {
   res.json({ message: "Skyddad route!" });
 });
 
-// Route för att lägga till spel i samlingen (kräver JWT)
+// Route för att lägga till menyer (kräver JWT)
 app.post("/api/addmenu", authenticateToken, (req, res) => {
   const { year, week_number } = req.body;
   if (!year || !week_number) {
@@ -39,21 +39,40 @@ app.post("/api/addmenu", authenticateToken, (req, res) => {
     if (err) {
       res.status(400).json({ message: "Något gick fel!" });
     } else {
-      res
-        .status(201)
-        .json({ message: "Meny tillagd!", menuId: this.lastID });
+      res.status(201).json({ message: "Meny tillagd!", menuId: this.lastID });
     }
   });
 });
 
 // Route för att hämta alla menyer (kräver ej JWT)
 app.get("/api/menus", (req, res) => {
-  const sql = `SELECT * FROM menus`;
+  const weekNumber = req.query.week_number;
 
-  db.all(sql, [], (err, rows) => {
+  if (!weekNumber) {
+    return res.status(400).json({ message: "Du måste ange ett veckonummer!" });
+  }
+
+  // Hämta rätterna för den angivna veckan, inklusive menyinfo
+  const sql = `
+    SELECT id, day_of_week, title, description, price 
+    FROM dishes 
+    WHERE year = 2026 AND week_number = ?
+    ORDER BY day_of_week ASC
+  `;
+
+  db.all(sql, [weekNumber], (err, rows) => {
     if (err) {
-      res.status(400).json({ message: "Något gick fel!" });
+      return res.status(400).json({ message: "Något gick fel!" });
     }
+
+    // Om inga rätter hittades, skicka felmeddelande om att det saknas meny
+    if (rows.length === 0) {
+      return res.status(404).json({
+        message: "Det finns ingen meny inlagd för denna vecka ännu.",
+      });
+    }
+
+    // Skicka tillbaka rätterna som json
     res.status(200).json(rows);
   });
 });
