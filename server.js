@@ -25,47 +25,69 @@ app.get("/api/protected", authenticateToken, (req, res) => {
   res.json({ message: "Skyddad route!" });
 });
 
-// Route för att lägga till menyer (kräver JWT)
+// Route för att lägga till meny för en hel vecka (kräver JWT)
 app.post("/api/addmenu", authenticateToken, (req, res) => {
-  const { year, week_number } = req.body;
-  if (!year || !week_number) {
-    return res
-      .status(400)
-      .json({ message: "Alla fält (year, week_number) måste fyllas i!" });
+  const { year, week_number, dishes } = req.body;
+
+  // Validering att år, vecka  och rätter finns som en icke tom array
+  if (!year || !week_number || !Array.isArray(dishes) || dishes.length === 0) {
+    return res.status(400).json({ message: "Fullständig vecka krävs!" });
   }
 
-  const sql = `INSERT INTO menus (year, week_number) VALUES (?, ?)`;
-  db.run(sql, [year, week_number], function (err) {
-    if (err) {
-      res.status(400).json({ message: "Något gick fel!" });
-    } else {
-      res.status(201).json({ message: "Meny tillagd!", menuId: this.lastID });
-    }
-  });
-});
+  const menuSql = `INSERT INTO menus (year, week_number) VALUES (?, ?)`;
 
-// Route för att lägga till en maträtt (kräver JWT)
-app.post("/api/adddishes", authenticateToken, (req, res) => {
-  const { year, week_number, day_of_week, title, description, price } = req.body;
-
-  // Validering av obligatoriska fält
-  if (!year || !week_number || !day_of_week || !title) {
-    return res.status(400).json({ 
-      message: "fälten för år, vecka, dag och maträttens namn måste fyllas i!" 
-    });
-  }
-
-  const sql = `
-    INSERT INTO dishes (year, week_number, day_of_week, title, description, price) 
-    VALUES (?, ?, ?, ?, ?, ?)
-  `;
-
-  db.run(sql, [year, week_number, day_of_week, title, description, price], function (err) {
+  db.run(menuSql, [year, week_number], function (err) {
     if (err) {
       console.error(err);
-      res.status(400).json({ message: "Något gick fel" });
+      return res.status(500).json({ message: "Kunde inte skapa veckomenyn." });
+    }
+
+    const newMenuId = this.lastID;
+
+    const dishSql = `
+    INSERT INTO dishes (menu_id, day_of_week, title, description, price) 
+  VALUES (?, ?, ?, ?, ?)
+`;
+
+    let hasError = false;
+
+    // Loopa igenon rätter och lägg till i db
+    dishes.forEach((dish) => {
+      if (hasError) return; // Stoppa vid fel
+
+      // vidare validering av varje rätt på veckodag och maträttsnamn innan sparning
+      if (!dish.day_of_week || !dish.title) {
+        hasError = true;
+        return res
+          .status(400)
+          .json({
+            message: "Veckodag och maträttsnamn krävs för alla rätter!",
+          });
+      }
+
+      // spara varje rätt, beskrivning och pris är valfria
+      db.run(
+        dishSql,
+        [
+          newMenuId, // Koppla rätten till den nya menyn
+          dish.day_of_week,
+          dish.title,
+          dish.description || "",
+          dish.price || 0,
+        ],
+        (dishErr) => {
+          if (dishErr) {
+            console.error("Fel vid insättning av rätt:", dishErr.message);
+          }
+        },
+      );
+    });
+
+    // sista callback för lyckat svar eller error
+    if (hasError) {
+      return res.status(500).json({ message: "Något gick fel" });
     } else {
-      res.status(201).json({ message: "Maträtt tillagd!", dishId: this.lastID });
+      return res.status(201).json({ message: "Veckan har lagts till!" });
     }
   });
 });
@@ -78,28 +100,22 @@ app.get("/api/menus", (req, res) => {
     return res.status(400).json({ message: "Du måste ange ett veckonummer!" });
   }
 
-  // Hämta rätterna för den angivna veckan, inklusive menyinfo
+  // Hämta rätter och datum för veckan med en join mellan dishes- och menusrader som finns i båda tabellerna baserat på week_number, sortera efter id för att få rätterna i den ordning de lades till
   const sql = `
-    SELECT id, day_of_week, title, description, price 
+    SELECT dishes.day_of_week, dishes.title, dishes.description, dishes.price 
     FROM dishes 
-    WHERE year = 2026 AND week_number = ?
-    ORDER BY day_of_week ASC
+    JOIN menus ON dishes.menu_id = menus.id
+    WHERE menus.week_number = ?
+    ORDER BY dishes.id ASC
   `;
 
   db.all(sql, [weekNumber], (err, rows) => {
     if (err) {
       return res.status(400).json({ message: "Något gick fel!" });
+    } else {
+      // Skicka tillbaka rätterna som json
+      return res.status(200).json(rows);
     }
-
-    // Om inga rätter hittades, skicka felmeddelande om att det saknas meny
-    if (rows.length === 0) {
-      return res.status(404).json({
-        message: "Det finns ingen meny inlagd för denna vecka ännu.",
-      });
-    }
-
-    // Skicka tillbaka rätterna som json
-    res.status(200).json(rows);
   });
 });
 
