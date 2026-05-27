@@ -44,6 +44,32 @@ app.post("/api/addmenu", authenticateToken, (req, res) => {
   });
 });
 
+// Route för att lägga till en maträtt (kräver JWT)
+app.post("/api/adddishes", authenticateToken, (req, res) => {
+  const { year, week_number, day_of_week, title, description, price } = req.body;
+
+  // Validering av obligatoriska fält
+  if (!year || !week_number || !day_of_week || !title) {
+    return res.status(400).json({ 
+      message: "fälten för år, vecka, dag och maträttens namn måste fyllas i!" 
+    });
+  }
+
+  const sql = `
+    INSERT INTO dishes (year, week_number, day_of_week, title, description, price) 
+    VALUES (?, ?, ?, ?, ?, ?)
+  `;
+
+  db.run(sql, [year, week_number, day_of_week, title, description, price], function (err) {
+    if (err) {
+      console.error(err);
+      res.status(400).json({ message: "Något gick fel" });
+    } else {
+      res.status(201).json({ message: "Maträtt tillagd!", dishId: this.lastID });
+    }
+  });
+});
+
 // Route för att hämta alla menyer (kräver ej JWT)
 app.get("/api/menus", (req, res) => {
   const weekNumber = req.query.week_number;
