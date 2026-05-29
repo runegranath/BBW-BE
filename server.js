@@ -39,6 +39,10 @@ app.post("/api/addmenu", authenticateToken, (req, res) => {
   db.run(menuSql, [year, week_number], function (err) {
     if (err) {
       console.error(err);
+
+      if (err.message.includes("UNIQUE constraint failed")) {
+        return res.status(400).json({ message: "Det finns redan en meny för denna vecka!" }); // specifik felhantering för unikt tillagda datumkombinationer 
+      }
       return res.status(500).json({ message: "Kunde inte skapa veckomenyn." });
     }
 
@@ -105,11 +109,11 @@ app.get("/api/menus", (req, res) => {
     SELECT dishes.day_of_week, dishes.title, dishes.description, dishes.price 
     FROM dishes 
     JOIN menus ON dishes.menu_id = menus.id
-    WHERE menus.week_number = ?
+    WHERE menus.week_number = ? AND menus.year = ?
     ORDER BY dishes.id ASC
   `;
 
-  db.all(sql, [weekNumber], (err, rows) => {
+  db.all(sql, [weekNumber, year], (err, rows) => {
     if (err) {
       return res.status(400).json({ message: "Något gick fel!" });
     } else {
