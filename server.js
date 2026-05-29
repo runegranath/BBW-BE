@@ -41,7 +41,9 @@ app.post("/api/addmenu", authenticateToken, (req, res) => {
       console.error(err);
 
       if (err.message.includes("UNIQUE constraint failed")) {
-        return res.status(400).json({ message: "Det finns redan en meny för denna vecka!" }); // specifik felhantering för unikt tillagda datumkombinationer 
+        return res
+          .status(400)
+          .json({ message: "Det finns redan en meny för denna vecka!" }); // specifik felhantering för unikt tillagda datumkombinationer
       }
       return res.status(500).json({ message: "Kunde inte skapa veckomenyn." });
     }
@@ -52,7 +54,8 @@ app.post("/api/addmenu", authenticateToken, (req, res) => {
     INSERT INTO dishes (menu_id, day_of_week, title, description, price) 
   VALUES (?, ?, ?, ?, ?)
 `;
-
+    // en räknare för att hålla koll på när alla rätter har lagts till och en errorflagga
+    let completedDishes = 0;
     let hasError = false;
 
     // Loopa igenon rätter och lägg till i db
@@ -62,11 +65,9 @@ app.post("/api/addmenu", authenticateToken, (req, res) => {
       // vidare validering av varje rätt på veckodag och maträttsnamn innan sparning
       if (!dish.day_of_week || !dish.title) {
         hasError = true;
-        return res
-          .status(400)
-          .json({
-            message: "Veckodag och maträttsnamn krävs för alla rätter!",
-          });
+        return res.status(400).json({
+          message: "Veckodag och maträttsnamn krävs för alla rätter!",
+        });
       }
 
       // spara varje rätt, beskrivning och pris är valfria
@@ -82,26 +83,46 @@ app.post("/api/addmenu", authenticateToken, (req, res) => {
         (dishErr) => {
           if (dishErr) {
             console.error("Fel vid insättning av rätt:", dishErr.message);
+            hasError = true;
+            return res
+              .status(500)
+              .json({ message: "Något gick fel vid sparande av rätt." });
+          }
+
+          completedDishes++;
+
+          // När alla rätter är sparade och inga fel har inträffat, skicka lyckat svar
+          if (completedDishes === dishes.length && !hasError) {
+            return res.status(201).json({ message: "Veckan har lagts till!" });
           }
         },
       );
     });
+  });
+});
 
-    // sista callback för lyckat svar eller error
-    if (hasError) {
-      return res.status(500).json({ message: "Något gick fel" });
-    } else {
-      return res.status(201).json({ message: "Veckan har lagts till!" });
-    }
+app.get("/api/dev/clear-database", (req, res) => {
+  // SQLite har foreign keys avstängda som standard, så vi tömmer båda manuellt
+  db.run("DELETE FROM dishes", [], (err) => {
+    if (err) return res.status(500).json({ error: err.message });
+
+    db.run("DELETE FROM menus", [], (menuErr) => {
+      if (menuErr) return res.status(500).json({ error: menuErr.message });
+
+      res.json({ message: "Databasen är rensad! Både menyer och rätter är borta." });
+    });
   });
 });
 
 // Route för att hämta alla menyer (kräver ej JWT)
 app.get("/api/menus", (req, res) => {
-  const weekNumber = req.query.week_number;
+  const weekNumber = req.query.week_number ? Number(req.query.week_number) : null;
+  const year = req.query.year ? Number(req.query.year) : null;
 
-  if (!weekNumber) {
-    return res.status(400).json({ message: "Du måste ange ett veckonummer!" });
+  if (!weekNumber || !year) {
+    return res
+      .status(400)
+      .json({ message: "Du måste ange både veckonummer och år!" });
   }
 
   // Hämta rätter och datum för veckan med en join mellan dishes- och menusrader som finns i båda tabellerna baserat på week_number, sortera efter id för att få rätterna i den ordning de lades till
@@ -204,7 +225,7 @@ app.post("/api/login", (req, res) => {
         // Skapa och skicka JWT
         const payload = { email: row.email };
         const token = jwt.sign(payload, process.env.ACCESS_TOKEN_SECRET, {
-          expiresIn: "1h",
+          expiresIn: "3h",
         });
         res.status(200).json({ message: "Inloggad!", token });
       }
