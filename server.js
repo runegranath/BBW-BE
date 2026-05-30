@@ -25,6 +25,37 @@ app.get("/api/protected", authenticateToken, (req, res) => {
   res.json({ message: "Skyddad route!" });
 });
 
+app.post('/api/orders', (req, res) => {
+    // Hämta data från request body för att skapa beställningen
+    const { dish_id, customer_name, customer_phone, pickup_time, quantity } = req.body;
+
+    // Validering: Kontrollerar ifyllda fält
+    if (!dish_id || !customer_name || !customer_phone || !pickup_time) {
+        return res.status(400).json({ error: 'Alla fält måste vara ifyllda.' });
+    }
+
+    const sql = `
+        INSERT INTO orders (dish_id, customer_name, customer_phone, pickup_time, quantity)
+        VALUES (?, ?, ?, ?, ?)
+    `;
+    
+    // 1 sätts som default och är valfritt att skicka med 
+    const params = [dish_id, customer_name, customer_phone, pickup_time, quantity || 1];
+
+    db.run(sql, params, function (err) {
+        if (err) {
+            console.error('Databasfel:', err.message);
+            return res.status(500).json({ error: 'Något gick fel' });
+        }
+
+        // vid lyckad insättning skickas id tillbaka i svaret 
+        res.status(201).json({
+            message: 'Beställning mottagen!',
+            orderId: this.lastID
+        });
+    });
+});
+
 // Route för att lägga till meny för en hel vecka (kräver JWT)
 app.post("/api/addmenu", authenticateToken, (req, res) => {
   const { year, week_number, dishes } = req.body;
@@ -101,19 +132,6 @@ app.post("/api/addmenu", authenticateToken, (req, res) => {
   });
 });
 
-app.get("/api/dev/clear-database", (req, res) => {
-  // SQLite har foreign keys avstängda som standard, så vi tömmer båda manuellt
-  db.run("DELETE FROM dishes", [], (err) => {
-    if (err) return res.status(500).json({ error: err.message });
-
-    db.run("DELETE FROM menus", [], (menuErr) => {
-      if (menuErr) return res.status(500).json({ error: menuErr.message });
-
-      res.json({ message: "Databasen är rensad! Både menyer och rätter är borta." });
-    });
-  });
-});
-
 // Route för att hämta alla menyer (kräver ej JWT)
 app.get("/api/menus", (req, res) => {
   const weekNumber = req.query.week_number ? Number(req.query.week_number) : null;
@@ -127,7 +145,7 @@ app.get("/api/menus", (req, res) => {
 
   // Hämta rätter och datum för veckan med en join mellan dishes- och menusrader som finns i båda tabellerna baserat på week_number, sortera efter id för att få rätterna i den ordning de lades till
   const sql = `
-    SELECT dishes.day_of_week, dishes.title, dishes.description, dishes.price 
+    SELECT dishes.id, dishes.day_of_week, dishes.title, dishes.description, dishes.price 
     FROM dishes 
     JOIN menus ON dishes.menu_id = menus.id
     WHERE menus.week_number = ? AND menus.year = ?
