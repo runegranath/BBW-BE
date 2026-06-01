@@ -25,35 +25,62 @@ app.get("/api/protected", authenticateToken, (req, res) => {
   res.json({ message: "Skyddad route!" });
 });
 
-app.post('/api/orders', (req, res) => {
-    // Hämta data från request body för att skapa beställningen
-    const { dish_id, customer_name, customer_phone, pickup_time, quantity } = req.body;
+// Route för att skapa en beställning (kräver ej JWT)
+app.post("/api/orders", (req, res) => {
+  // Hämta data från request body för att skapa beställningen
+  const { dish_id, customer_name, customer_phone, pickup_time, quantity } =
+    req.body;
 
-    // Validering: Kontrollerar ifyllda fält
-    if (!dish_id || !customer_name || !customer_phone || !pickup_time) {
-        return res.status(400).json({ error: 'Alla fält måste vara ifyllda.' });
-    }
+  // Validering: Kontrollerar ifyllda fält
+  if (!dish_id || !customer_name || !customer_phone || !pickup_time) {
+    return res.status(400).json({ error: "Alla fält måste vara ifyllda." });
+  }
 
-    const sql = `
+  const sql = `
         INSERT INTO orders (dish_id, customer_name, customer_phone, pickup_time, quantity)
         VALUES (?, ?, ?, ?, ?)
     `;
-    
-    // 1 sätts som default och är valfritt att skicka med 
-    const params = [dish_id, customer_name, customer_phone, pickup_time, quantity || 1];
 
-    db.run(sql, params, function (err) {
-        if (err) {
-            console.error('Databasfel:', err.message);
-            return res.status(500).json({ error: 'Något gick fel' });
-        }
+  // 1 sätts som default och är valfritt att skicka med
+  const params = [
+    dish_id,
+    customer_name,
+    customer_phone,
+    pickup_time,
+    quantity || 1,
+  ];
 
-        // vid lyckad insättning skickas id tillbaka i svaret 
-        res.status(201).json({
-            message: 'Beställning mottagen!',
-            orderId: this.lastID
-        });
+  db.run(sql, params, function (err) {
+    if (err) {
+      console.error("Databasfel:", err.message);
+      return res.status(500).json({ error: "Något gick fel" });
+    }
+
+    // vid lyckad insättning skickas id tillbaka i svaret
+    res.status(201).json({
+      message: "Beställning mottagen!",
+      orderId: this.lastID,
     });
+  });
+});
+
+// Route för att hämta alla beställningar till ordersidan (kräver JWT)
+app.get("/api/orders", authenticateToken, (req, res) => {
+  // Hämta alla kolumner från orders men bara specifika saker från dishes, .title .day_of_week..
+  const sql = `
+        SELECT orders.*, dishes.title, dishes.day_of_week, dishes.price
+        FROM orders
+        LEFT JOIN dishes ON orders.dish_id = dishes.id
+        ORDER BY orders.id DESC
+    `;
+
+  db.all(sql, [], (err, rows) => {
+    if (err) {
+      console.error("Databasfel:", err.message);
+      return res.status(500).json({ error: "Kunde inte hämta ordrar" });
+    }
+    res.json(rows); // Skickar listan till orders.html
+  });
 });
 
 // Route för att lägga till meny för en hel vecka (kräver JWT)
@@ -134,7 +161,9 @@ app.post("/api/addmenu", authenticateToken, (req, res) => {
 
 // Route för att hämta alla menyer (kräver ej JWT)
 app.get("/api/menus", (req, res) => {
-  const weekNumber = req.query.week_number ? Number(req.query.week_number) : null;
+  const weekNumber = req.query.week_number
+    ? Number(req.query.week_number)
+    : null;
   const year = req.query.year ? Number(req.query.year) : null;
 
   if (!weekNumber || !year) {
