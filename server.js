@@ -83,6 +83,43 @@ app.get("/api/orders", authenticateToken, (req, res) => {
   });
 });
 
+// Route för att uppdatera orderstatus (kräver JWT)
+app.put('/api/orders/:id', authenticateToken, (req, res) => {
+    const orderId = req.params.id;
+    const { order_status } = req.body; // uppdatering av orderstatus
+
+    if (!order_status) {
+        return res.status(400).json({ error: 'Status måste skickas med.' });
+    }
+
+    const sql = `UPDATE orders SET order_status = ? WHERE id = ?`;
+
+    db.run(sql, [order_status, orderId], function (err) {
+        if (err) {
+            console.error(err);
+            return res.status(500).json({ error: 'Kunde inte uppdatera status' });
+        }
+        
+        res.json({ message: 'Orderstatus uppdaterad!', changes: this.changes });
+    });
+});
+
+// Route för att radera en order (kräver JWT)
+app.delete('/api/orders/:id', authenticateToken, (req, res) => {
+    const orderId = req.params.id;
+
+    const sql = `DELETE FROM orders WHERE id = ?`;
+
+    db.run(sql, [orderId], function (err) {
+        if (err) {
+            console.error(err);
+            return res.status(500).json({ error: 'Kunde inte radera ordern' });
+        }
+
+        res.json({ message: 'Ordern har raderats!', changes: this.changes });
+    });
+});
+
 // Route för att lägga till meny för en hel vecka (kräver JWT)
 app.post("/api/addmenu", authenticateToken, (req, res) => {
   const { year, week_number, dishes } = req.body;
