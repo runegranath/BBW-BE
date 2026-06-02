@@ -104,6 +104,20 @@ app.put('/api/orders/:id', authenticateToken, (req, res) => {
     });
 });
 
+// Route för att radera en specifik maträtt ur en veckomeny (kräver JWT), blir sedan cascade
+app.delete('/api/dishes/week/:year/:week', authenticateToken, (req, res) => {
+    const { year, week } = req.params;
+
+    const sql = `DELETE FROM menus WHERE year = ? AND week_number = ?`;
+
+    db.run(sql, [year, week], function (err) {
+        if (err) {
+            console.log(err);
+        }
+        res.json({ message: 'Veckomenyn har raderats!' });
+    });
+});
+
 // Route för att radera en order (kräver JWT)
 app.delete('/api/orders/:id', authenticateToken, (req, res) => {
     const orderId = req.params.id;
