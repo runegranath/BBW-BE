@@ -7,8 +7,6 @@ const db = new sqlite3.Database(process.env.DATABASE); // Anslut till databasen
 
 // Skapa tabellen users
 db.serialize(() => {
-  // Drop table if exists
-  db.run("DROP TABLE IF EXISTS users");
   db.run(`CREATE TABLE users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         email VARCHAR(255) NOT NULL UNIQUE,
@@ -18,7 +16,6 @@ db.serialize(() => {
   console.log("Tabellen users skapad");
 
   // Skapa tabellen för menyer med id, år, veckonummer och publiceringsstatus, ska vara unik på år + veckonummer
-  db.run("DROP TABLE IF EXISTS menus");
   db.run(`CREATE TABLE IF NOT EXISTS menus (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     year INTEGER NOT NULL,
