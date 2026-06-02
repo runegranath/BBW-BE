@@ -17,5 +17,8 @@
   "bugs": {
     "url": "https://github.com/runegranath/BBW-BE/issues"
   },
-  "homepage": "https://github.com/runegranath/BBW-BE#readme"
+  "homepage": "https://github.com/runegranath/BBW-BE#readme",
+  "dependencies": {
+    "dotenv": "^17.4.2"
+  }
 }
