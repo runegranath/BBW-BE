@@ -7,7 +7,7 @@ const db = new sqlite3.Database(process.env.DATABASE); // Anslut till databasen
 
 // Skapa tabellen users
 db.serialize(() => {
-  db.run(`CREATE TABLE users (
+  db.run(`CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         email VARCHAR(255) NOT NULL UNIQUE,
         password VARCHAR(255) NOT NULL,
