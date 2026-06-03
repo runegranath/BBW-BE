@@ -16,6 +16,30 @@ app.use(cors());
 // SQLite-anslutning
 const db = new sqlite3.Database(process.env.DATABASE); // Anslut till databasen
 
+// hasha lösenordet före synkront
+bcrypt.hash("adminadmin123", 10).then((hashedPassword) => {
+  
+  // skapa standardadmin så inte Render rensar bort det
+  db.serialize(() => {
+    const adminEmail = "admin@admin.com";
+
+    db.get("SELECT * FROM users WHERE email = ?", [adminEmail], (err, row) => {
+      if (!row && !err) {
+        db.run(
+          "INSERT INTO users (email, password) VALUES (?, ?)",
+          [adminEmail, hashedPassword],
+          (insertErr) => {
+            if (!insertErr) {
+              console.log(`Auto-skapat adminkonto: ${adminEmail}`);
+            }
+          }
+        );
+      }
+    });
+  });
+
+}).catch(err => console.error(err));
+
 // Routes
 app.get("/api", (req, res) => {
   res.json({ message: "Välkommen till API:et!" });
