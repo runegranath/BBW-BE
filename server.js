@@ -268,9 +268,12 @@ app.post("/api/register", async (req, res) => {
         .json({ message: "Lösenordet måste vara minst 6 tecken långt!" });
     }
 
+    // Om användaren inte finns, hasha lösenord och lagra användare i databasen
+    const hashedPassword = await bcrypt.hash(req.body.password, 10);
+
     // Kolla om användaren redan finns
     const sqlCheck = `SELECT * FROM users WHERE email = ?`;
-    db.get(sqlCheck, [email], async (err, row) => {
+    db.get(sqlCheck, [email], (err, row) => {
       if (err) {
         return res.status(400).json({ message: "Något gick fel!" });
       } else if (row) {
@@ -278,9 +281,6 @@ app.post("/api/register", async (req, res) => {
           .status(400)
           .json({ message: "E-posten är redan registrerad!" });
       }
-
-      // Om användaren inte finns, hasha lösenord och lagra användare i databasen
-      const hashedPassword = await bcrypt.hash(req.body.password, 10);
 
       // Lagra i databasen
       const sql = `INSERT INTO users (email, password) VALUES (?, ?)`;
