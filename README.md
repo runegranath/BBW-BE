@@ -29,3 +29,8 @@ Databasen är uppbyggd som en relationsdatabas i SQLite med fyra huvudtabeller:
 
 ---
 
+## Begränsningar med publiceringen
+
+* **Begränsningar med SQlite och Render** På grund av användningen av SQlite och Render som publiceringssida kan menyer bli rensade snabbt. Därför skapades ett standardinloggningskonto, men däremot ingen standardiserad meny.
+
+---
