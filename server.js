@@ -1,4 +1,4 @@
-require('./install.js');
+require("./install.js");
 require("dotenv").config();
 const express = require("express");
 const sqlite3 = require("sqlite3").verbose();
@@ -17,28 +17,33 @@ app.use(cors());
 const db = new sqlite3.Database(process.env.DATABASE); // Anslut till databasen
 
 // hasha lösenordet före synkront
-bcrypt.hash("adminadmin123", 10).then((hashedPassword) => {
-  
-  // skapa standardadmin så inte Render rensar bort det
-  db.serialize(() => {
-    const adminEmail = "admin@admin.com";
+bcrypt
+  .hash("adminadmin123", 10)
+  .then((hashedPassword) => {
+    // skapa standardadmin så inte Render rensar bort det
+    db.serialize(() => {
+      const adminEmail = "admin@admin.com";
 
-    db.get("SELECT * FROM users WHERE email = ?", [adminEmail], (err, row) => {
-      if (!row && !err) {
-        db.run(
-          "INSERT INTO users (email, password) VALUES (?, ?)",
-          [adminEmail, hashedPassword],
-          (insertErr) => {
-            if (!insertErr) {
-              console.log(`Auto-skapat adminkonto: ${adminEmail}`);
-            }
+      db.get(
+        "SELECT * FROM users WHERE email = ?",
+        [adminEmail],
+        (err, row) => {
+          if (!row && !err) {
+            db.run(
+              "INSERT INTO users (email, password) VALUES (?, ?)",
+              [adminEmail, hashedPassword],
+              (insertErr) => {
+                if (!insertErr) {
+                  console.log(`Auto-skapat adminkonto: ${adminEmail}`);
+                }
+              },
+            );
           }
-        );
-      }
+        },
+      );
     });
-  });
-
-}).catch(err => console.error(err));
+  })
+  .catch((err) => console.error(err));
 
 // Routes
 app.get("/api", (req, res) => {
@@ -108,55 +113,92 @@ app.get("/api/orders", authenticateToken, (req, res) => {
   });
 });
 
-// Route för att uppdatera orderstatus (kräver JWT)
-app.put('/api/orders/:id', authenticateToken, (req, res) => {
-    const orderId = req.params.id;
-    const { order_status } = req.body; // uppdatering av orderstatus
+// Route för att uppdatera en specifik maträtt (kräver JWT)
+app.put("/api/dishes/:id", authenticateToken, (req, res) => {
+  const dishId = req.params.id;
+  const { title, description, price } = req.body;
 
-    if (!order_status) {
-        return res.status(400).json({ error: 'Status måste skickas med.' });
+  if (!title) {
+    return res.status(400).json({ message: "Rättens namn måste fyllas i." });
+  }
+
+  const sql = `
+    UPDATE dishes
+    SET title = ?, description = ?, price = ?
+    WHERE id = ?
+  `;
+
+  // Om description eller price inte skickas med så sätts de till tom sträng eller 0 i databasen
+  db.run(sql, [title, description || "", price || 0, dishId], function (err) {
+    if (err) {
+      console.error(err);
+      return res
+        .status(500)
+        .json({ message: "Kunde inte uppdatera maträtten." });
     }
 
-    const sql = `UPDATE orders SET order_status = ? WHERE id = ?`;
+    if (this.changes === 0) {
+      return res
+        .status(404)
+        .json({ message: "Ingen maträtt hittades med detta id." });
+    }
 
-    db.run(sql, [order_status, orderId], function (err) {
-        if (err) {
-            console.error(err);
-            return res.status(500).json({ error: 'Kunde inte uppdatera status' });
-        }
-        
-        res.json({ message: 'Orderstatus uppdaterad!', changes: this.changes });
+    res.json({
+      message: "Maträtten har uppdaterats!",
+      changes: this.changes,
     });
+  });
+});
+
+// Route för att uppdatera orderstatus (kräver JWT)
+app.put("/api/orders/:id", authenticateToken, (req, res) => {
+  const orderId = req.params.id;
+  const { order_status } = req.body; // uppdatering av orderstatus
+
+  if (!order_status) {
+    return res.status(400).json({ error: "Status måste skickas med." });
+  }
+
+  const sql = `UPDATE orders SET order_status = ? WHERE id = ?`;
+
+  db.run(sql, [order_status, orderId], function (err) {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ error: "Kunde inte uppdatera status" });
+    }
+
+    res.json({ message: "Orderstatus uppdaterad!", changes: this.changes });
+  });
 });
 
 // Route för att radera en specifik maträtt ur en veckomeny (kräver JWT), blir sedan cascade
-app.delete('/api/dishes/week/:year/:week', authenticateToken, (req, res) => {
-    const { year, week } = req.params;
+app.delete("/api/dishes/week/:year/:week", authenticateToken, (req, res) => {
+  const { year, week } = req.params;
 
-    const sql = `DELETE FROM menus WHERE year = ? AND week_number = ?`;
+  const sql = `DELETE FROM menus WHERE year = ? AND week_number = ?`;
 
-    db.run(sql, [year, week], function (err) {
-        if (err) {
-            console.log(err);
-        }
-        res.json({ message: 'Veckomenyn har raderats!' });
-    });
+  db.run(sql, [year, week], function (err) {
+    if (err) {
+      console.log(err);
+    }
+    res.json({ message: "Veckomenyn har raderats!" });
+  });
 });
 
 // Route för att radera en order (kräver JWT)
-app.delete('/api/orders/:id', authenticateToken, (req, res) => {
-    const orderId = req.params.id;
+app.delete("/api/orders/:id", authenticateToken, (req, res) => {
+  const orderId = req.params.id;
 
-    const sql = `DELETE FROM orders WHERE id = ?`;
+  const sql = `DELETE FROM orders WHERE id = ?`;
 
-    db.run(sql, [orderId], function (err) {
-        if (err) {
-            console.error(err);
-            return res.status(500).json({ error: 'Kunde inte radera ordern' });
-        }
+  db.run(sql, [orderId], function (err) {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ error: "Kunde inte radera ordern" });
+    }
 
-        res.json({ message: 'Ordern har raderats!', changes: this.changes });
-    });
+    res.json({ message: "Ordern har raderats!", changes: this.changes });
+  });
 });
 
 // Route för att lägga till meny för en hel vecka (kräver JWT)
