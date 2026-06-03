@@ -4,6 +4,8 @@ Detta är backenden för ett system som hanterar veckomenyer, maträtter och kun
 
 Projektet är byggt med **Node.js**, **Express** och **SQLite**.
 
+länk till livesidan på Render: https://bbw-be.onrender.com
+
 ---
 
 ## Features
