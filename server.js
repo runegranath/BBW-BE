@@ -14,7 +14,7 @@ const jwt = require("jsonwebtoken"); // JSON Web Token (JWT)
 app.use(cors());
 
 // SQLite-anslutning via Turso för att datan inte ska rensas 
-import { connect } from "@tursodatabase/serverless";
+const { connect } = require("@tursodatabase/serverless");
 
 const db = connect({
   url: process.env.TURSO_DATABASE_URL,
