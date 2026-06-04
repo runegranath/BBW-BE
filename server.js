@@ -13,8 +13,13 @@ const jwt = require("jsonwebtoken"); // JSON Web Token (JWT)
 // Aktivera CORS (Cross-Origin Resource Sharing) för att tillåta frontend att kommunicera med backend
 app.use(cors());
 
-// SQLite-anslutning
-const db = new sqlite3.Database(process.env.DATABASE); // Anslut till databasen
+// SQLite-anslutning via Turso för att datan inte ska rensas 
+import { connect } from "@tursodatabase/serverless";
+
+const db = connect({
+  url: process.env.TURSO_DATABASE_URL,
+  authToken: process.env.TURSO_AUTH_TOKEN,
+});
 
 // hasha lösenordet före synkront
 bcrypt

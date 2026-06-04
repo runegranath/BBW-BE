@@ -3,7 +3,12 @@ const express = require("express");
 const sqlite3 = require("sqlite3").verbose();
 
 // SQLite
-const db = new sqlite3.Database(process.env.DATABASE); // Anslut till databasen
+const { connect } = require("@tursodatabase/serverless");
+
+const db = connect({
+  url: process.env.TURSO_DATABASE_URL,
+  authToken: process.env.TURSO_AUTH_TOKEN,
+});
 
 // Skapa tabellen users
 db.serialize(() => {
