@@ -1,7 +1,6 @@
 require("./install.js");
 require("dotenv").config();
 const express = require("express");
-const sqlite3 = require("sqlite3").verbose();
 const bcrypt = require("bcrypt"); // Hasha lösenord
 const cors = require("cors");
 
@@ -13,10 +12,10 @@ const jwt = require("jsonwebtoken"); // JSON Web Token (JWT)
 // Aktivera CORS (Cross-Origin Resource Sharing) för att tillåta frontend att kommunicera med backend
 app.use(cors());
 
-// SQLite-anslutning via Turso för att datan inte ska rensas 
-const { connect } = require("@libsql/client");
+// SQLite-anslutning via Turso för att datan inte ska rensas
+const { createClient } = require("@libsql/client");
 
-const db = connect({
+const db = createClient({
   url: process.env.TURSO_DATABASE_URL,
   authToken: process.env.TURSO_AUTH_TOKEN,
 });
@@ -24,29 +23,24 @@ const db = connect({
 // hasha lösenordet före synkront
 bcrypt
   .hash("adminadmin123", 10)
-  .then((hashedPassword) => {
-    // skapa standardadmin så inte Render rensar bort det
-    db.serialize(() => {
-      const adminEmail = "admin@admin.com";
+  .then(async (hashedPassword) => {
+    const adminEmail = "admin@admin.com";
+    try {
+      const result = await db.execute({
+        sql: "SELECT * FROM users WHERE email = ?",
+        args: [adminEmail],
+      });
 
-      db.get(
-        "SELECT * FROM users WHERE email = ?",
-        [adminEmail],
-        (err, row) => {
-          if (!row && !err) {
-            db.run(
-              "INSERT INTO users (email, password) VALUES (?, ?)",
-              [adminEmail, hashedPassword],
-              (insertErr) => {
-                if (!insertErr) {
-                  console.log(`Auto-skapat adminkonto: ${adminEmail}`);
-                }
-              },
-            );
-          }
-        },
-      );
-    });
+      if (result.rows.length === 0) {
+        await db.execute({
+          sql: "INSERT INTO users (email, password) VALUES (?, ?)",
+          args: [adminEmail, hashedPassword],
+        });
+        console.log(`Auto-skapat adminkonto: ${adminEmail}`);
+      }
+    } catch (err) {
+      console.error("Fel vid skapande av admin:", err.message);
+    }
   })
   .catch((err) => console.error(err));
 
@@ -61,7 +55,7 @@ app.get("/api/protected", authenticateToken, (req, res) => {
 });
 
 // Route för att skapa en beställning (kräver ej JWT)
-app.post("/api/orders", (req, res) => {
+app.post("/api/orders", async (req, res) => {
   // Hämta data från request body för att skapa beställningen
   const { dish_id, customer_name, customer_phone, pickup_time, quantity } =
     req.body;
@@ -85,22 +79,23 @@ app.post("/api/orders", (req, res) => {
     quantity || 1,
   ];
 
-  db.run(sql, params, function (err) {
-    if (err) {
-      console.error("Databasfel:", err.message);
-      return res.status(500).json({ error: "Något gick fel" });
-    }
-
-    // vid lyckad insättning skickas id tillbaka i svaret
+  try {
+    const result = await db.execute({ sql, args: params });
     res.status(201).json({
       message: "Beställning mottagen!",
-      orderId: this.lastID,
+      // lastInsertRowid istället för this.lastID här med Turso
+      orderId: result.lastInsertRowid
+        ? result.lastInsertRowid.toString()
+        : null,
     });
-  });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Något gick fel" });
+  }
 });
 
 // Route för att hämta alla beställningar till ordersidan (kräver JWT)
-app.get("/api/orders", authenticateToken, (req, res) => {
+app.get("/api/orders", authenticateToken, async (req, res) => {
   // Hämta alla kolumner från orders men bara specifika saker från dishes, .title .day_of_week..
   const sql = `
         SELECT orders.*, dishes.title, dishes.day_of_week, dishes.price
@@ -109,17 +104,18 @@ app.get("/api/orders", authenticateToken, (req, res) => {
         ORDER BY orders.id DESC
     `;
 
-  db.all(sql, [], (err, rows) => {
-    if (err) {
-      console.error("Databasfel:", err.message);
-      return res.status(500).json({ error: "Kunde inte hämta ordrar" });
-    }
-    res.json(rows); // Skickar listan till orders.html
-  });
+  try {
+    const result = await db.execute(sql);
+    // Turso sparar raderna i .rows
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Kunde inte hämta ordrar" });
+  }
 });
 
 // Route för att uppdatera en specifik maträtt (kräver JWT)
-app.put("/api/dishes/:id", authenticateToken, (req, res) => {
+app.put("/api/dishes/:id", authenticateToken, async (req, res) => {
   const dishId = req.params.id;
   const { title, description, price } = req.body;
 
@@ -134,15 +130,14 @@ app.put("/api/dishes/:id", authenticateToken, (req, res) => {
   `;
 
   // Om description eller price inte skickas med så sätts de till tom sträng eller 0 i databasen
-  db.run(sql, [title, description || "", price || 0, dishId], function (err) {
-    if (err) {
-      console.error(err);
-      return res
-        .status(500)
-        .json({ message: "Kunde inte uppdatera maträtten." });
-    }
+  try {
+    const result = await db.execute({
+      sql,
+      args: [title, description || "", price || 0, dishId],
+    });
 
-    if (this.changes === 0) {
+    // RowsAffected istället för this.changes med Turso
+    if (result.rowsAffected === 0) {
       return res
         .status(404)
         .json({ message: "Ingen maträtt hittades med detta id." });
@@ -150,13 +145,16 @@ app.put("/api/dishes/:id", authenticateToken, (req, res) => {
 
     res.json({
       message: "Maträtten har uppdaterats!",
-      changes: this.changes,
+      changes: result.rowsAffected,
     });
-  });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Kunde inte uppdatera maträtten." });
+  }
 });
 
 // Route för att uppdatera orderstatus (kräver JWT)
-app.put("/api/orders/:id", authenticateToken, (req, res) => {
+app.put("/api/orders/:id", authenticateToken, async (req, res) => {
   const orderId = req.params.id;
   const { order_status } = req.body; // uppdatering av orderstatus
 
@@ -166,124 +164,109 @@ app.put("/api/orders/:id", authenticateToken, (req, res) => {
 
   const sql = `UPDATE orders SET order_status = ? WHERE id = ?`;
 
-  db.run(sql, [order_status, orderId], function (err) {
-    if (err) {
+  try {
+    const result = await db.execute({ sql, args: [order_status, orderId] });
+    res.json({
+      message: "Orderstatus uppdaterad!",
+      changes: result.rowsAffected,
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Kunde inte uppdatera status" });
+  }
+});
+
+// Route för att radera en specifik maträtt ur en veckomeny (kräver JWT), blir sedan cascaderaderade
+app.delete(
+  "/api/dishes/week/:year/:week",
+  authenticateToken,
+  async (req, res) => {
+    const { year, week } = req.params;
+    const sql = `DELETE FROM menus WHERE year = ? AND week_number = ?`;
+
+    try {
+      await db.execute({ sql, args: [year, week] });
+      res.json({ message: "Veckomenyn har raderats!" });
+    } catch (err) {
       console.error(err);
-      return res.status(500).json({ error: "Kunde inte uppdatera status" });
+      return res.status(500).json({ error: "Kunde inte radera menyn." });
     }
-
-    res.json({ message: "Orderstatus uppdaterad!", changes: this.changes });
-  });
-});
-
-// Route för att radera en specifik maträtt ur en veckomeny (kräver JWT), blir sedan cascade
-app.delete("/api/dishes/week/:year/:week", authenticateToken, (req, res) => {
-  const { year, week } = req.params;
-
-  const sql = `DELETE FROM menus WHERE year = ? AND week_number = ?`;
-
-  db.run(sql, [year, week], function (err) {
-    if (err) {
-      console.log(err);
-    }
-    res.json({ message: "Veckomenyn har raderats!" });
-  });
-});
+  },
+);
 
 // Route för att radera en order (kräver JWT)
-app.delete("/api/orders/:id", authenticateToken, (req, res) => {
+app.delete("/api/orders/:id", authenticateToken, async (req, res) => {
   const orderId = req.params.id;
-
   const sql = `DELETE FROM orders WHERE id = ?`;
 
-  db.run(sql, [orderId], function (err) {
-    if (err) {
-      console.error(err);
-      return res.status(500).json({ error: "Kunde inte radera ordern" });
-    }
-
-    res.json({ message: "Ordern har raderats!", changes: this.changes });
-  });
+  try {
+    await db.execute({ sql, args: [orderId] });
+    res.json({ message: "Ordern har raderats!" });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Kunde inte radera menyn." });
+  }
 });
 
 // Route för att lägga till meny för en hel vecka (kräver JWT)
-app.post("/api/addmenu", authenticateToken, (req, res) => {
+app.post("/api/addmenu", authenticateToken, async (req, res) => {
   const { year, week_number, dishes } = req.body;
 
-  // Validering att år, vecka  och rätter finns som en icke tom array
+  // Validering att år, vecka och rätter finns som en icke tom array
   if (!year || !week_number || !Array.isArray(dishes) || dishes.length === 0) {
-    return res.status(400).json({ message: "Fullständig vecka krävs!" });
+    return res
+      .status(400)
+      .json({ message: "Fyll i datumfält och minst en rätt!" });
   }
 
   const menuSql = `INSERT INTO menus (year, week_number) VALUES (?, ?)`;
 
-  db.run(menuSql, [year, week_number], function (err) {
-    if (err) {
-      console.error(err);
-
-      if (err.message.includes("UNIQUE constraint failed")) {
-        return res
-          .status(400)
-          .json({ message: "Det finns redan en meny för denna vecka!" }); // specifik felhantering för unikt tillagda datumkombinationer
-      }
-      return res.status(500).json({ message: "Kunde inte skapa veckomenyn." });
-    }
-
-    const newMenuId = this.lastID;
+  try {
+    const menuResult = await db.execute({
+      sql: menuSql,
+      args: [year, week_number],
+    });
+    const newMenuId = menuResult.lastInsertRowid;
 
     const dishSql = `
     INSERT INTO dishes (menu_id, day_of_week, title, description, price) 
   VALUES (?, ?, ?, ?, ?)
 `;
-    // en räknare för att hålla koll på när alla rätter har lagts till och en errorflagga
-    let completedDishes = 0;
-    let hasError = false;
-
-    // Loopa igenon rätter och lägg till i db
-    dishes.forEach((dish) => {
-      if (hasError) return; // Stoppa vid fel
-
-      // vidare validering av varje rätt på veckodag och maträttsnamn innan sparning
+    // for-of loop för att await ska fungera korrekt
+    for (const dish of dishes) {
       if (!dish.day_of_week || !dish.title) {
-        hasError = true;
         return res.status(400).json({
           message: "Veckodag och maträttsnamn krävs för alla rätter!",
         });
       }
 
-      // spara varje rätt, beskrivning och pris är valfria
-      db.run(
-        dishSql,
-        [
-          newMenuId, // Koppla rätten till den nya menyn
+      await db.execute({
+        sql: dishSql,
+        args: [
+          newMenuId,
           dish.day_of_week,
           dish.title,
           dish.description || "",
           dish.price || 0,
         ],
-        (dishErr) => {
-          if (dishErr) {
-            console.error("Fel vid insättning av rätt:", dishErr.message);
-            hasError = true;
-            return res
-              .status(500)
-              .json({ message: "Något gick fel vid sparande av rätt." });
-          }
+      });
+    }
 
-          completedDishes++;
-
-          // När alla rätter är sparade och inga fel har inträffat, skicka lyckat svar
-          if (completedDishes === dishes.length && !hasError) {
-            return res.status(201).json({ message: "Veckan har lagts till!" });
-          }
-        },
-      );
-    });
-  });
+    return res.status(201).json({ message: "Veckan har lagts till!" });
+  } catch (err) {
+    console.error(err);
+    if (err.message.includes("UNIQUE constraint failed")) {
+      // Hanterar dubbletter
+      return res
+        .status(400)
+        .json({ message: "Det finns redan en meny för denna vecka!" });
+    }
+    return res.status(500).json({ message: "Kunde inte skapa veckomenyn." });
+  }
 });
 
 // Route för att hämta alla menyer (kräver ej JWT)
-app.get("/api/menus", (req, res) => {
+app.get("/api/menus", async (req, res) => {
   const weekNumber = req.query.week_number
     ? Number(req.query.week_number)
     : null;
@@ -304,14 +287,13 @@ app.get("/api/menus", (req, res) => {
     ORDER BY dishes.id ASC
   `;
 
-  db.all(sql, [weekNumber, year], (err, rows) => {
-    if (err) {
-      return res.status(400).json({ message: "Något gick fel!" });
-    } else {
-      // Skicka tillbaka rätterna som json
-      return res.status(200).json(rows);
-    }
-  });
+  try {
+    const result = await db.execute({ sql, args: [weekNumber, year] });
+    return res.status(200).json(result.rows);
+  } catch (err) {
+    console.error(err);
+    return res.status(400).json({ message: "Något gick fel!" });
+  }
 });
 
 // Registrera användare
@@ -344,32 +326,27 @@ app.post("/api/register", async (req, res) => {
 
     // Kolla om användaren redan finns
     const sqlCheck = `SELECT * FROM users WHERE email = ?`;
-    db.get(sqlCheck, [email], (err, row) => {
-      if (err) {
-        return res.status(400).json({ message: "Något gick fel!" });
-      } else if (row) {
-        return res
-          .status(400)
-          .json({ message: "E-posten är redan registrerad!" });
-      }
+    const checkResult = await db.execute({ sql: sqlCheck, args: [email] });
 
-      // Lagra i databasen
-      const sql = `INSERT INTO users (email, password) VALUES (?, ?)`;
-      db.run(sql, [email, hashedPassword], function (err) {
-        if (err) {
-          res.status(400).json({ message: "Något gick fel!" });
-        } else {
-          res.status(201).json({ message: "Användare registrerad!" });
-        }
-      });
-    });
-  } catch {
+    if (checkResult.rows.length > 0) {
+      return res
+        .status(400)
+        .json({ message: "E-posten är redan registrerad!" });
+    }
+
+    // Lagra i databasen
+    const sql = `INSERT INTO users (email, password) VALUES (?, ?)`;
+    await db.execute({ sql, args: [email, hashedPassword] });
+
+    res.status(201).json({ message: "Användare registrerad!" });
+  } catch (err) {
+    console.error(err);
     res.status(500).send();
   }
 });
 
 // Logga in användare
-app.post("/api/login", (req, res) => {
+app.post("/api/login", async (req, res) => {
   const { email, password } = req.body;
 
   // Validera input
@@ -380,27 +357,31 @@ app.post("/api/login", (req, res) => {
   }
 
   // Kolla om användaren finns
-  const sql = `SELECT * FROM users WHERE email = ?`;
-  db.get(sql, [email], async (err, row) => {
-    if (err) {
-      res.status(400).json({ message: "Något gick fel!" });
-    } else if (!row) {
-      res.status(400).json({ message: "E-postadressen finns inte!" });
-    } else {
-      // Kolla om lösenordet stämmer
-      const passwordMatch = await bcrypt.compare(password, row.password);
-      if (!passwordMatch) {
-        res.status(400).json({ message: "Felaktigt lösenord!" });
-      } else {
-        // Skapa och skicka JWT
-        const payload = { email: row.email };
-        const token = jwt.sign(payload, process.env.ACCESS_TOKEN_SECRET, {
-          expiresIn: "3h",
-        });
-        res.status(200).json({ message: "Inloggad!", token });
-      }
+  try {
+    const sql = `SELECT * FROM users WHERE email = ?`;
+    const result = await db.execute({ sql, args: [email] });
+
+    if (result.rows.length === 0) {
+      return res.status(400).json({ message: "E-postadressen finns inte!" });
     }
-  });
+
+    const user = result.rows[0];
+    const passwordMatch = await bcrypt.compare(password, user.password);
+
+    if (!passwordMatch) {
+      return res.status(400).json({ message: "Felaktigt lösenord!" });
+    }
+
+    // Skapa och skicka JWT
+    const payload = { email: user.email };
+    const token = jwt.sign(payload, process.env.ACCESS_TOKEN_SECRET, {
+      expiresIn: "3h",
+    });
+    res.status(200).json({ message: "Inloggad!", token });
+  } catch (err) {
+    console.error(err);
+    res.status(400).json({ message: "Något gick fel!" });
+  }
 });
 
 // Validera JWT-token

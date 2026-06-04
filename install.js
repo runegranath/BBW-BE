@@ -2,7 +2,7 @@ require("dotenv").config();
 const express = require("express");
 
 // SQLite
-const { connect } = require("@libsql/client");
+const { createClient } = require("@libsql/client");
 
 const db = connect({
   url: process.env.TURSO_DATABASE_URL,
