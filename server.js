@@ -20,30 +20,6 @@ const db = createClient({
   authToken: process.env.TURSO_AUTH_TOKEN,
 });
 
-// hasha lösenordet före synkront
-bcrypt
-  .hash("adminadmin123", 10)
-  .then(async (hashedPassword) => {
-    const adminEmail = "admin@admin.com";
-    try {
-      const result = await db.execute({
-        sql: "SELECT * FROM users WHERE email = ?",
-        args: [adminEmail],
-      });
-
-      if (result.rows.length === 0) {
-        await db.execute({
-          sql: "INSERT INTO users (email, password) VALUES (?, ?)",
-          args: [adminEmail, hashedPassword],
-        });
-        console.log(`Auto-skapat adminkonto: ${adminEmail}`);
-      }
-    } catch (err) {
-      console.error("Fel vid skapande av admin:", err.message);
-    }
-  })
-  .catch((err) => console.error(err));
-
 // Routes
 app.get("/api", (req, res) => {
   res.json({ message: "Välkommen till API:et!" });

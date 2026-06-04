@@ -29,4 +29,3 @@ Databasen är uppbyggd som en relationsdatabas i SQLite med fyra huvudtabeller:
 *Relationer:* En meny innehåller flera maträtter (1:N), och en maträtt kan finnas i flera beställningar (1:N). Alla inloggade administratörer/medarbetare har behörighet att hantera menyerna.
 
 ---
-
