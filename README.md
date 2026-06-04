@@ -2,7 +2,7 @@
 
 Detta är backenden för ett system som hanterar veckomenyer, maträtter och kundbeställningar. Systemet har även ett inbyggt användarsystem för administratörer/inloggad personal som ska kunna hantera menyerna och beställningar.
 
-Projektet är byggt med **Node.js**, **Express** och **SQLite**.
+Projektet är byggt med **Node.js**, **Express** och **Turso** (SQLite i molnet).
 
 länk till livesidan på Render: https://bbw-be.onrender.com
 
@@ -11,6 +11,7 @@ länk till livesidan på Render: https://bbw-be.onrender.com
 ## Features
 
 * **Användarhantering (Users):** Registrering och lagring av administratörer med krypterade lösenord.
+* **Autentisering (JWT):** Säkra endpoints som kräver JSON Web Tokens för hantering av menyer och beställningar.
 * **Menyhantering (Menus):** Skapa unika veckomenyer baserade på år och veckonummer.
 * **Maträtter (Dishes):** Koppla maträtter till specifika dagar i en veckomeny (med `ON DELETE CASCADE` som rensar veckan om en maträtt raderas).
 * **Beställningar (Orders):** Hantera kundbeställningar på specifika maträtter med status (pending, etc.), kvantitet och upphämtningstid.
@@ -29,8 +30,3 @@ Databasen är uppbyggd som en relationsdatabas i SQLite med fyra huvudtabeller:
 
 ---
 
-## Begränsningar med publiceringen
-
-* **Begränsningar med SQlite och Render** På grund av användningen av SQlite och Render som publiceringssida kan menyer bli rensade snabbt. Därför skapades ett standardinloggningskonto, men däremot ingen standardiserad meny.
-
----
