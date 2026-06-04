@@ -19,6 +19,7 @@
   },
   "homepage": "https://github.com/runegranath/BBW-BE#readme",
   "dependencies": {
+    "@libsql/client": "^0.17.3",
     "@tursodatabase/serverless": "^1.2.0",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.6",

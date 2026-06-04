@@ -3,7 +3,7 @@ const express = require("express");
 const sqlite3 = require("sqlite3").verbose();
 
 // SQLite
-const { connect } = require("@tursodatabase/serverless");
+const { connect } = require("@libsql/client");
 
 const db = connect({
   url: process.env.TURSO_DATABASE_URL,
